@@ -9,7 +9,7 @@ import {
   Store,
 } from 'lucide-react';
 import { api } from './api-client';
-import type { Member } from './types';
+import type { Member, MenuItem } from './types';
 import Modal from './modal';
 import { LegalContent } from './legal-content';
 export default function AccountPanel({
@@ -61,7 +61,7 @@ export default function AccountPanel({
         )}
       </div>
       <p className="version-note">
-        틈픽 0.2.0 · Android
+        틈픽 0.3.0 · Android
         <br />
         결제·보관함 연동 준비 중
       </p>
@@ -140,10 +140,27 @@ export function MerchantPanel({ onSaved }: { onSaved: () => void }) {
   const [form, setForm] = useState<Record<string, unknown> | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [saved, setSaved] = useState(false);
+    [saved, setSaved] = useState(false),
+    [menus, setMenus] = useState<MenuItem[]>([]);
   useEffect(() => {
     void api<Record<string, unknown>>('merchant')
-      .then(setForm)
+      .then((data) => {
+        setForm(data);
+        setMenus(
+          (data.menus as MenuItem[])?.length
+            ? (data.menus as MenuItem[])
+            : [
+                {
+                  id: crypto.randomUUID(),
+                  name: '',
+                  group: '메인 메뉴',
+                  description: '',
+                  price: 0,
+                  available: true,
+                },
+              ],
+        );
+      })
       .catch((e) => setError(e.message));
   }, []);
   async function submit(e: React.SyntheticEvent<HTMLFormElement>) {
@@ -155,7 +172,7 @@ export function MerchantPanel({ onSaved }: { onSaved: () => void }) {
     try {
       await api('merchant', {
         ...Object.fromEntries(f.entries()),
-        price: Number(f.get('price')),
+        menus,
         minutes: Number(f.get('minutes')),
         open: f.get('open') === 'on',
       });
@@ -170,7 +187,9 @@ export function MerchantPanel({ onSaved }: { onSaved: () => void }) {
   return (
     <section>
       <h1>내 매장 관리</h1>
-      <p className="muted">대표 메뉴와 픽업 준비 시간을 설정해 주세요.</p>
+      <p className="muted">
+        메뉴를 분류별로 등록하고 픽업 준비 시간을 설정해 주세요.
+      </p>
       {error && (
         <p className="error" role="alert">
           {error}
@@ -205,24 +224,147 @@ export function MerchantPanel({ onSaved }: { onSaved: () => void }) {
             />
           </label>
           <label>
-            대표 메뉴
-            <input
-              name="menu"
-              required
-              maxLength={80}
-              placeholder="예: 직화 불고기 덮밥"
-              defaultValue={String(form.menu)}
-            />
-          </label>
-          <label>
-            메뉴 설명
+            매장 소개
             <input
               name="description"
               maxLength={200}
               defaultValue={String(form.description)}
-              placeholder="메뉴를 간단히 소개해 주세요"
             />
           </label>
+          <section className="menu-editor">
+            <h2>
+              메뉴 관리 <small>{menus.length}/50</small>
+            </h2>
+            {menus.map((menu, index) => (
+              <fieldset key={menu.id} disabled={busy}>
+                <legend>메뉴 {index + 1}</legend>
+                <label>
+                  메뉴 이름
+                  <input
+                    required
+                    maxLength={80}
+                    value={menu.name}
+                    onChange={(e) =>
+                      setMenus((ms) =>
+                        ms.map((m) =>
+                          m.id === menu.id ? { ...m, name: e.target.value } : m,
+                        ),
+                      )
+                    }
+                    placeholder="예: 치킨 샐러드"
+                  />
+                </label>
+                <div className="form-columns">
+                  <label>
+                    분류
+                    <select
+                      value={menu.group}
+                      onChange={(e) =>
+                        setMenus((ms) =>
+                          ms.map((m) =>
+                            m.id === menu.id
+                              ? { ...m, group: e.target.value }
+                              : m,
+                          ),
+                        )
+                      }
+                    >
+                      {['메인 메뉴', '사이드', '음료', '디저트', '기타'].map(
+                        (g) => (
+                          <option key={g}>{g}</option>
+                        ),
+                      )}
+                    </select>
+                  </label>
+                  <label>
+                    가격 (원)
+                    <input
+                      required
+                      type="number"
+                      min={100}
+                      max={1000000}
+                      step={1}
+                      value={menu.price || ''}
+                      onChange={(e) =>
+                        setMenus((ms) =>
+                          ms.map((m) =>
+                            m.id === menu.id
+                              ? { ...m, price: Number(e.target.value) }
+                              : m,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+                <label>
+                  메뉴 설명
+                  <input
+                    maxLength={200}
+                    value={menu.description}
+                    onChange={(e) =>
+                      setMenus((ms) =>
+                        ms.map((m) =>
+                          m.id === menu.id
+                            ? { ...m, description: e.target.value }
+                            : m,
+                        ),
+                      )
+                    }
+                  />
+                </label>
+                <label className="menu-available">
+                  <input
+                    type="checkbox"
+                    checked={menu.available}
+                    onChange={(e) =>
+                      setMenus((ms) =>
+                        ms.map((m) =>
+                          m.id === menu.id
+                            ? { ...m, available: e.target.checked }
+                            : m,
+                        ),
+                      )
+                    }
+                  />
+                  판매 중 (끄면 품절)
+                </label>
+                <button
+                  type="button"
+                  className="secondary danger-text"
+                  disabled={menus.length === 1}
+                  onClick={() =>
+                    setMenus((ms) => ms.filter((m) => m.id !== menu.id))
+                  }
+                >
+                  메뉴 삭제
+                </button>
+              </fieldset>
+            ))}
+            <button
+              type="button"
+              className="secondary full"
+              disabled={busy || menus.length >= 50}
+              onClick={() =>
+                setMenus((ms) => [
+                  ...ms,
+                  {
+                    id: crypto.randomUUID(),
+                    name: '',
+                    group: '메인 메뉴',
+                    description: '',
+                    price: 0,
+                    available: true,
+                  },
+                ])
+              }
+            >
+              + 메뉴 추가
+            </button>
+            <p className="muted">
+              추가·수정·삭제한 내용은 아래 저장 버튼을 눌러야 반영돼요.
+            </p>
+          </section>
           <label>
             카테고리
             <select name="category" defaultValue={String(form.category)}>
@@ -232,18 +374,6 @@ export function MerchantPanel({ onSaved }: { onSaved: () => void }) {
             </select>
           </label>
           <div className="form-columns">
-            <label>
-              가격 (원)
-              <input
-                name="price"
-                type="number"
-                min={100}
-                max={1000000}
-                step={100}
-                required
-                defaultValue={Number(form.price) || undefined}
-              />
-            </label>
             <label>
               준비 시간 (분)
               <input

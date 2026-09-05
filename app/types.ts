@@ -7,6 +7,8 @@ export type Member = {
   created: number;
 };
 export type Shop = {
+  menus?: MenuItem[];
+  menuId?: string;
   id: string;
   name: string;
   category: string;
@@ -18,4 +20,12 @@ export type Shop = {
   tag: string;
   stations: string[];
   open?: boolean;
+};
+export type MenuItem = {
+  id: string;
+  name: string;
+  group: string;
+  description: string;
+  price: number;
+  available: boolean;
 };

@@ -2561,3 +2561,23 @@ button:disabled {
     env(safe-area-inset-bottom, 0px)
   );
 }
+.menu-editor fieldset {border:1px solid var(--border,#d9e4de);border-radius:16px;padding:18px;margin:16px 0;display:grid;gap:14px;min-width:0}
+.menu-editor legend {padding:0 8px;font-weight:700}
+.menu-editor h2 small {font-size:14px;color:#61756a}
+.menu-available {display:flex!important;align-items:center;gap:10px}
+.menu-available input {width:20px!important;min-height:20px!important}
+.store-menu-heading {padding:24px 0 12px}
+.store-menu-heading p {display:flex;align-items:center;gap:6px;margin-top:10px}
+.menu-group {margin:24px 0}
+.menu-group h2 {margin-bottom:14px}
+.store-menu-item {width:100%;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px;text-align:left;border:1px solid #dde5e1;border-radius:16px;background:#fff;margin:10px 0;color:#142f26}
+.store-menu-item:hover {border-color:#168568}
+.store-menu-item h3 {font-size:18px;margin:0 0 8px}
+.store-menu-item p {font-size:14px;color:#66766e;margin:0 0 12px;overflow-wrap:anywhere}
+.store-menu-item span {font-size:14px;white-space:nowrap;color:#087d5a}
+.store-menu-item:disabled {opacity:.55}
+.sales-controls {margin:20px 0;display:grid;gap:10px}
+.sales-controls .categories {margin:0}
+.sales-controls label {display:flex;align-items:center;gap:12px;font-size:14px}
+.sales-controls input {padding:10px;border:1px solid #dce4df;border-radius:10px;background:white;min-height:44px}
+.modal.compact .full + .full {margin-top:12px}

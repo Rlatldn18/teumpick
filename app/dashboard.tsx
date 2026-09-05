@@ -28,6 +28,8 @@ import AccountPanel, { MerchantPanel } from './account-panel';
 import { App as NativeApp } from '@capacitor/app';
 import { native } from './api-client';
 import Modal from './modal';
+import { orderEvents, type OrderEvent } from './order-events';
+import { koreaDate, salesRange, type SalesPeriod } from './sales-period';
 const photo = (id: string) =>
   `https://images.unsplash.com/${id}?auto=format&fit=crop&w=800&q=80`;
 export default function Dashboard({
@@ -60,6 +62,21 @@ export default function Dashboard({
     [code, setCode] = useState(''),
     [collect, setCollect] = useState<Order | null>(null),
     [sellerShop] = useState('all');
+  const [visiting, setVisiting] = useState<Shop | null>(null);
+  const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
+  const [events, setEvents] = useState<OrderEvent[]>([]);
+  const [period, setPeriod] = useState<SalesPeriod>('day');
+  const [salesDate, setSalesDate] = useState(() => koreaDate(Date.now()));
+  const seen = useRef(new Set<string>());
+  const eventStorage = 'teumpick-events-' + (member?.id ?? 'guest');
+  const fetchRun = useRef(0);
+  useEffect(() => {
+    try {
+      seen.current = new Set(
+        JSON.parse(localStorage.getItem(eventStorage) ?? '[]'),
+      );
+    } catch {}
+  }, [eventStorage]);
   const [shops, setShops] = useState<Shop[]>(demo ? sampleShops : []);
   const [catalogLoading, setCatalogLoading] = useState(!demo);
   const requestId = useRef(crypto.randomUUID());
@@ -92,30 +109,48 @@ export default function Dashboard({
     const sub = NativeApp.addListener('backButton', () => {
       if (selected) setSelected(null);
       else if (collect) setCollect(null);
+      else if (cancelOrder) setCancelOrder(null);
+      else if (visiting) setVisiting(null);
       else if (tab !== 'shops') setTab('shops');
       else void NativeApp.minimizeApp();
     });
     return () => {
       void sub.then((s) => s.remove());
     };
-  }, [tab, selected, collect]);
+  }, [tab, selected, collect, cancelOrder, visiting]);
   const mutation = useRef(false);
   const refresh = useCallback(async () => {
     if (demo) return;
     try {
-      setOrders(await api<Order[]>('orders'));
+      const run = ++fetchRun.current;
+      const next = await api<Order[]>('orders');
+      if (run !== fetchRun.current) return;
+      setOrders(next);
+      const fresh = orderEvents(next, role, seen.current);
+      setEvents(fresh);
+      setError('');
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [demo]);
+  }, [demo, role]);
   useEffect(() => {
     void refresh();
     const t = setInterval(() => {
       setNow(Date.now());
       void refresh();
-    }, 15000);
-    return () => clearInterval(t);
-  }, [refresh]);
+    }, 5000);
+    const resume = () => {
+      if (!document.hidden) {
+        void refresh();
+        void loadCatalog();
+      }
+    };
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', resume);
+    };
+  }, [refresh, loadCatalog]);
   useEffect(() => {
     if (!notice) return;
     const t = setTimeout(() => setNotice(''), 4500);
@@ -161,7 +196,7 @@ export default function Dashboard({
               (s) => s.id === id && s.stations.includes(station),
             );
             if (!shop) throw new Error('Store unavailable at selected station');
-            setSelected(shop);
+            setVisiting(shop);
             setQty(1);
             setNote('');
             return { opened: true, shopId: id };
@@ -255,10 +290,12 @@ export default function Dashboard({
       }
       if (payload.action === 'create') {
         setSelected(null);
+        setVisiting(null);
         setTab('orders');
         setNotice('주문 완료! 보관함이 배정되었어요.');
       } else {
         setCollect(null);
+        setCancelOrder(null);
         setCode('');
         setNotice(
           payload.action === 'collect'
@@ -277,16 +314,44 @@ export default function Dashboard({
     sellerOrders = orders.filter(
       (o) => sellerShop === 'all' || o.shopId === sellerShop,
     );
-  const day = (t: number) =>
-    new Date(t).toLocaleDateString('en-CA', { timeZone: 'Asia/Seoul' });
-  const today = sellerOrders.filter(
-    (o) => day(o.created) === day(now) && o.status !== 5,
+  const range = salesRange(salesDate, period);
+  const periodOrders = sellerOrders.filter(
+    (o) => o.created >= range.start && o.created < range.end && o.status !== 5,
   );
+  const periodName = { day: '일', week: '주', month: '월', year: '년' }[period];
+  const store = visiting ? shops.find((s) => s.id === visiting.id) : null;
+  const storeMenus =
+    store?.menus ??
+    (store
+      ? [
+          {
+            id: 'legacy',
+            name: store.menu,
+            price: store.price,
+            description: store.desc,
+            group: '메인 메뉴',
+            available: true,
+          },
+        ]
+      : []);
+  function dismissEvent() {
+    if (!events[0]) return;
+    seen.current.add(events[0].key);
+    try {
+      localStorage.setItem(
+        eventStorage,
+        JSON.stringify([...seen.current].slice(-500)),
+      );
+    } catch {}
+    setEvents((e) => e.slice(1));
+  }
   const visibleShops = shops.filter(
     (s) =>
       s.stations.includes(station) &&
       (category === '전체' || s.category === category) &&
-      (s.name + s.menu).includes(query),
+      (s.name + s.menu + (s.menus ?? []).map((m) => m.name).join(' ')).includes(
+        query,
+      ),
   );
   const remaining = (o: Order) => Math.max(0, Math.ceil((o.eta - now) / 60000));
   const viewOrders =
@@ -356,7 +421,11 @@ export default function Dashboard({
             <select
               aria-label="픽업 역 선택"
               value={station}
-              onChange={(e) => setStation(e.target.value)}
+              onChange={(e) => {
+                setStation(e.target.value);
+                setVisiting(null);
+                setSelected(null);
+              }}
             >
               <option value="신도림">신도림역</option>
               <option value="영등포">영등포역</option>
@@ -411,7 +480,7 @@ export default function Dashboard({
               </button>
             </div>
           )}
-          {role === 'buyer' && tab === 'shops' && (
+          {role === 'buyer' && tab === 'shops' && !visiting && (
             <>
               <section className="welcome">
                 <div>
@@ -506,7 +575,8 @@ export default function Dashboard({
                     className="shop-card"
                     key={s.id}
                     onClick={() => {
-                      setSelected(s);
+                      setVisiting(s);
+                      void loadCatalog();
                       setQty(1);
                       setNote('');
                       setError('');
@@ -556,6 +626,61 @@ export default function Dashboard({
               )}
             </>
           )}
+          {role === 'buyer' && tab === 'shops' && visiting && (
+            <section className="store-menu-page">
+              <button className="secondary" onClick={() => setVisiting(null)}>
+                ← 주변 가게
+              </button>
+              <div className="store-menu-heading">
+                <h1>{visiting.name}</h1>
+                <p className="muted">{store?.desc ?? visiting.desc}</p>
+                <p>
+                  <Clock3 size={16} /> 약 {store?.minutes ?? visiting.minutes}분
+                  후 픽업 · {station}역
+                </p>
+              </div>
+              {!store && (
+                <div className="empty">
+                  지금은 주문을 접수하지 않는 매장이에요.
+                </div>
+              )}
+              {[...new Set(storeMenus.map((m) => m.group))].map((group) => (
+                <section className="menu-group" key={group}>
+                  <h2>{group}</h2>
+                  {storeMenus
+                    .filter((m) => m.group === group)
+                    .map((menu) => (
+                      <button
+                        key={menu.id}
+                        className="store-menu-item"
+                        disabled={!menu.available}
+                        onClick={() => {
+                          if (!store) return;
+                          setSelected({
+                            ...store,
+                            menuId: menu.id,
+                            menu: menu.name,
+                            desc: menu.description,
+                            price: menu.price,
+                          });
+                          setQty(1);
+                          setNote('');
+                          setError('');
+                          requestId.current = crypto.randomUUID();
+                        }}
+                      >
+                        <div>
+                          <h3>{menu.name}</h3>
+                          <p>{menu.description}</p>
+                          <strong>{won(menu.price)}</strong>
+                        </div>
+                        <span>{menu.available ? '메뉴 선택 →' : '품절'}</span>
+                      </button>
+                    ))}
+                </section>
+              ))}
+            </section>
+          )}
           {role === 'seller' && tab === 'shops' && (
             <>
               <div className="section-heading">
@@ -571,22 +696,55 @@ export default function Dashboard({
                   <Store size={17} />내 매장 관리
                 </button>
               </div>
+              <div className="sales-controls">
+                <div className="categories" aria-label="매출 조회 기간">
+                  {(['day', 'week', 'month', 'year'] as SalesPeriod[]).map(
+                    (p) => (
+                      <button
+                        key={p}
+                        className={period === p ? 'selected' : ''}
+                        aria-pressed={period === p}
+                        onClick={() => setPeriod(p)}
+                      >
+                        {{ day: '일', week: '주', month: '월', year: '년' }[p]}
+                      </button>
+                    ),
+                  )}
+                </div>
+                <label>
+                  기준 날짜
+                  <input
+                    aria-label="매출 기준 날짜"
+                    type="date"
+                    value={salesDate}
+                    onChange={(e) => {
+                      if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value))
+                        setSalesDate(e.target.value);
+                    }}
+                  />
+                </label>
+                <p className="muted">
+                  {range.label} · 한국 시간 기준 · 주간은 월~일
+                </p>
+              </div>
               <div className="stats">
                 <article>
                   <span>
                     <TrendingUp size={18} />
-                    오늘 주문 금액
+                    {periodName}간 주문 금액
                   </span>
-                  <strong>{won(today.reduce((s, o) => s + o.total, 0))}</strong>
+                  <strong>
+                    {won(periodOrders.reduce((s, o) => s + o.total, 0))}
+                  </strong>
                   <small>취소 제외 · 실제 결제 매출 아님</small>
                 </article>
                 <article>
                   <span>
                     <Receipt size={18} />
-                    오늘 주문
+                    {periodName}간 주문
                   </span>
                   <strong>
-                    {today.length}
+                    {periodOrders.length}
                     <small>건</small>
                   </strong>
                   <small>한국 시간 기준</small>
@@ -773,13 +931,12 @@ export default function Dashboard({
                               </button>
                             </>
                           )}
-                          {role === 'buyer' && o.status === 0 && (
+                          {((role === 'buyer' && o.status === 0) ||
+                            (role === 'seller' && o.status < 3)) && (
                             <button
                               className="secondary"
                               disabled={busy}
-                              onClick={() =>
-                                act({ action: 'cancel', id: o.id })
-                              }
+                              onClick={() => setCancelOrder(o)}
                             >
                               주문 취소
                             </button>
@@ -900,6 +1057,68 @@ export default function Dashboard({
           {notice}
         </output>
       )}
+      {cancelOrder && (
+        <Modal
+          label="cancel-title"
+          onClose={() => {
+            if (!busy) setCancelOrder(null);
+          }}
+        >
+          <section className="modal compact">
+            <h2 id="cancel-title">정말 주문을 취소할까요?</h2>
+            <p>
+              {cancelOrder.menuName} · {won(cancelOrder.total)}
+            </p>
+            <p className="muted">
+              {role === 'seller'
+                ? '취소하면 구매자에게 알림이 표시돼요.'
+                : '취소 후에는 되돌릴 수 없어요.'}
+            </p>
+            {error && (
+              <p className="error" role="alert">
+                {error}
+              </p>
+            )}
+            <button
+              className="secondary full"
+              disabled={busy}
+              onClick={() => setCancelOrder(null)}
+            >
+              주문 유지하기
+            </button>
+            <button
+              className="danger-button full"
+              disabled={busy}
+              onClick={() => void act({ action: 'cancel', id: cancelOrder.id })}
+            >
+              {busy ? '취소 중…' : '주문 취소하기'}
+            </button>
+          </section>
+        </Modal>
+      )}
+      {events.length > 0 && !selected && !collect && !cancelOrder && (
+        <Modal label="event-title" onClose={dismissEvent}>
+          <section className="modal compact">
+            <PackageCheck size={32} className="green" />
+            <h2 id="event-title">{events[0].title}</h2>
+            <p>{events[0].message}</p>
+            <button
+              className="primary full"
+              onClick={() => {
+                dismissEvent();
+                setTab('orders');
+                setFilter('전체');
+                setVisiting(null);
+              }}
+            >
+              주문 확인하기
+            </button>
+            <button className="secondary full" onClick={dismissEvent}>
+              확인
+            </button>
+          </section>
+        </Modal>
+      )}
       {selected && (
         <Modal
           label="menu-title"
@@ -980,6 +1199,7 @@ export default function Dashboard({
                   act({
                     action: 'create',
                     shopId: selected.id,
+                    menuId: selected.menuId,
                     unitPrice: selected.price,
                     station,
                     qty,

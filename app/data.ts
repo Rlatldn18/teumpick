@@ -57,6 +57,7 @@ export const statuses = [
   '취소',
 ];
 export type Order = {
+  canceledBy?: string;
   id: string;
   shopId: string;
   shopName?: string;

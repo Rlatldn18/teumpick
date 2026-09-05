@@ -6,7 +6,7 @@ import {
   verifyPassword,
   passwordValid,
 } from './password';
-import type { Member } from '../app/types';
+import type { Member, MenuItem } from '../app/types';
 const ORIGIN = 'https://platform-pick-sindorim.szmt-36.chatgpt.site';
 const allowed = new Set([ORIGIN, 'https://localhost', 'capacitor://localhost']);
 const COOKIE = 'teumpick_session';
@@ -79,15 +79,66 @@ async function loginSession(member: Member, req: Request) {
   };
 }
 const shopSelect =
-  'SELECT id,name,category,description AS desc,minutes,price,menu,image,station,open FROM merchants';
+  'SELECT id,name,category,description AS desc,minutes,price,menu,image,station,open,menus FROM merchants';
 const orderSelect =
-  'SELECT id,buyer_id AS buyerId,seller_id AS sellerId,shop_id AS shopId,shop_name AS shopName,menu_name AS menuName,image,station,qty,total,status,locker,created,eta,note,code,ready FROM pickup_orders';
+  'SELECT id,buyer_id AS buyerId,seller_id AS sellerId,shop_id AS shopId,shop_name AS shopName,menu_name AS menuName,image,station,qty,total,status,locker,created,eta,note,code,ready,canceled_by AS canceledBy FROM pickup_orders';
 const photoByCategory: Record<string, string> = {
   한식: 'photo-1547592180-85f173990554',
   샐러드: 'photo-1512621776951-a57141f2eefd',
   샌드위치: 'photo-1528735602780-2552fd46c7af',
   커피·음료: 'photo-1461023058943-07fcbe16d735',
 };
+function readMenus(shop: Record<string, unknown>): MenuItem[] {
+  const parsed = JSON.parse(
+    typeof shop.menus === 'string' ? shop.menus : '[]',
+  ) as MenuItem[];
+  return parsed.length
+    ? parsed
+    : shop.menu && Number(shop.price) > 0
+      ? [
+          {
+            id: 'legacy',
+            name: clean(shop.menu, 80),
+            description: clean(shop.description ?? shop.desc, 200),
+            group: '메인 메뉴',
+            price: Number(shop.price),
+            available: true,
+          },
+        ]
+      : [];
+}
+function validateMenus(value: unknown): MenuItem[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 50)
+    fail(400, '메뉴를 1~50개 등록해 주세요.');
+  const ids = new Set<string>();
+  return value.map((item) => {
+    if (!item || typeof item !== 'object')
+      fail(400, '메뉴 정보를 확인해 주세요.');
+    const id = clean(item.id, 64),
+      name = clean(item.name, 80),
+      group = clean(item.group, 30);
+    if (
+      !/^[a-zA-Z0-9-]{1,64}$/.test(id) ||
+      ids.has(id) ||
+      !name ||
+      !group ||
+      !Number.isInteger(item.price) ||
+      item.price < 100 ||
+      item.price > 1000000 ||
+      typeof item.available !== 'boolean'
+    )
+      fail(400, '메뉴 이름·분류·가격을 확인해 주세요.');
+    ids.add(id);
+    return {
+      id,
+      name,
+      group,
+      description: clean(item.description, 200),
+      price: item.price,
+      available: item.available,
+    };
+  });
+}
 export async function handle(req: Request) {
   const headers = new Headers({
     'Cache-Control': 'no-store',
@@ -124,7 +175,7 @@ export async function handle(req: Request) {
     let b: Record<string, unknown> = {};
     if (req.method === 'POST') {
       const raw = await req.text();
-      if (raw.length > 4096) fail(413, '입력 내용이 너무 깁니다.');
+      if (raw.length > 60000) fail(413, '입력 내용이 너무 깁니다.');
       try {
         const parsed = JSON.parse(raw);
         if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object')
@@ -354,6 +405,7 @@ export async function handle(req: Request) {
         stations: [r.station],
         tag: '픽업 주문',
         open: !!r.open,
+        menus: readMenus(r),
       }));
     } else if (path === 'merchant') {
       const m = await user(req);
@@ -362,10 +414,37 @@ export async function handle(req: Request) {
         result = await db()
           .prepare('SELECT * FROM merchants WHERE member_id=?')
           .bind(m.id)
-          .first();
+          .first<Record<string, unknown>>();
+        if (result)
+          result = {
+            ...(result as Record<string, unknown>),
+            menus: readMenus(result as Record<string, unknown>),
+          };
       } else if (req.method === 'POST') {
+        const previous = await db()
+          .prepare('SELECT * FROM merchants WHERE member_id=?')
+          .bind(m.id)
+          .first<Record<string, unknown>>();
+        if (b.menus === undefined && previous && readMenus(previous).length > 1)
+          fail(409, '최신 앱에서 여러 메뉴를 관리해 주세요.');
+        const menus = validateMenus(
+          b.menus ?? [
+            {
+              id: 'legacy',
+              name: b.menu,
+              group: '메인 메뉴',
+              description: b.description ?? '',
+              price: b.price,
+              available: true,
+            },
+          ],
+        );
+        const first = menus.find((x) => x.available) ?? menus[0];
+        const minPrice = Math.min(
+          ...menus.filter((x) => x.available).map((x) => x.price),
+        );
         const name = clean(b.name, 60),
-          menu = clean(b.menu, 80),
+          menu = first.name,
           category = String(b.category),
           station = String(b.station);
         if (
@@ -373,18 +452,17 @@ export async function handle(req: Request) {
           !menu ||
           !photoByCategory[category] ||
           !['신도림', '영등포'].includes(station) ||
-          !Number.isInteger(b.price) ||
-          Number(b.price) < 100 ||
-          Number(b.price) > 1000000 ||
           !Number.isInteger(b.minutes) ||
           Number(b.minutes) < 5 ||
           Number(b.minutes) > 120 ||
           clean(b.address, 150).length < 5
         )
           fail(400, '매장·메뉴·가격·준비 시간 정보를 확인해 주세요.');
+        if (b.open === true && !menus.some((x) => x.available))
+          fail(400, '판매 가능한 메뉴가 있어야 주문 접수를 켤 수 있어요.');
         await db()
           .prepare(
-            'UPDATE merchants SET name=?,menu=?,category=?,station=?,address=?,description=?,price=?,minutes=?,image=?,open=? WHERE member_id=?',
+            'UPDATE merchants SET name=?,menu=?,category=?,station=?,address=?,description=?,price=?,minutes=?,image=?,open=?,menus=? WHERE member_id=?',
           )
           .bind(
             name,
@@ -393,10 +471,11 @@ export async function handle(req: Request) {
             station,
             clean(b.address, 150),
             clean(b.description, 200),
-            b.price,
+            Number.isFinite(minPrice) ? minPrice : first.price,
             b.minutes,
             photoByCategory[category],
             b.open === true ? 1 : 0,
+            JSON.stringify(menus),
             m.id,
           )
           .run();
@@ -449,7 +528,17 @@ export async function handle(req: Request) {
             .first<Record<string, unknown>>();
           if (!shop || shop.station !== b.station)
             fail(409, '현재 주문할 수 없는 매장입니다.');
-          if (b.unitPrice !== shop.price)
+          const menus = readMenus(shop);
+          const chosen =
+            b.menuId === undefined
+              ? menus.find((x) => x.available)
+              : menus.find((x) => x.id === b.menuId && x.available);
+          if (!chosen)
+            fail(
+              409,
+              '판매 중인 메뉴가 아니에요. 메뉴 목록을 다시 확인해 주세요.',
+            );
+          if (b.unitPrice !== chosen.price)
             fail(
               409,
               '메뉴 가격이 변경됐어요. 가게 목록을 새로 확인해 주세요.',
@@ -460,7 +549,7 @@ export async function handle(req: Request) {
               const created = Date.now();
               const r = await db()
                 .prepare(
-                  'INSERT INTO pickup_orders (id,buyer_id,seller_id,shop_id,shop_name,menu_name,image,station,qty,total,status,locker,created,eta,note,code,request_id) SELECT ?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=?) AND EXISTS(SELECT 1 FROM merchants WHERE id=? AND open=1 AND price=? AND menu=? AND minutes=? AND station=? AND member_id IN (SELECT id FROM members))',
+                  'INSERT INTO pickup_orders (id,buyer_id,seller_id,shop_id,shop_name,menu_name,image,station,qty,total,status,locker,created,eta,note,code,request_id) SELECT ?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=?) AND EXISTS(SELECT 1 FROM merchants WHERE id=? AND open=1 AND price=? AND menus=? AND minutes=? AND station=? AND member_id IN (SELECT id FROM members))',
                 )
                 .bind(
                   crypto.randomUUID(),
@@ -468,11 +557,11 @@ export async function handle(req: Request) {
                   shop.member_id,
                   shop.id,
                   shop.name,
-                  shop.menu,
+                  chosen.name,
                   shop.image,
                   shop.station,
                   b.qty,
-                  Number(shop.price) * Number(b.qty),
+                  chosen.price * Number(b.qty),
                   n,
                   created,
                   created + Number(shop.minutes) * 60000,
@@ -485,7 +574,7 @@ export async function handle(req: Request) {
                   m.id,
                   shop.id,
                   shop.price,
-                  shop.menu,
+                  shop.menus,
                   shop.minutes,
                   shop.station,
                 )
@@ -538,7 +627,11 @@ export async function handle(req: Request) {
             .run();
           result = { ok: true };
         } else {
-          if (b.action === 'cancel' && status === 0) next = 5;
+          if (
+            b.action === 'cancel' &&
+            (status === 0 || (m.role === 'seller' && status < 3))
+          )
+            next = 5;
           else if (b.action === 'next' && m.role === 'seller' && status < 3)
             next = status + 1;
           else if (
@@ -554,9 +647,9 @@ export async function handle(req: Request) {
           if (next < 0) fail(409, '현재 상태에서는 처리할 수 없어요.');
           const updated = await db()
             .prepare(
-              'UPDATE pickup_orders SET status=?,ready=CASE WHEN ?=3 THEN ? ELSE ready END WHERE id=? AND status=?',
+              'UPDATE pickup_orders SET status=?,canceled_by=CASE WHEN ?=5 THEN ? ELSE canceled_by END,ready=CASE WHEN ?=3 THEN ? ELSE ready END WHERE id=? AND status=?',
             )
-            .bind(next, next, Date.now(), order.id, status)
+            .bind(next, next, m.role, next, Date.now(), order.id, status)
             .run();
           if (!updated.meta.changes)
             fail(409, '주문 상태가 바뀌었어요. 새로고침해 주세요.');

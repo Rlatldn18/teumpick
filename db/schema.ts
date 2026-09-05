@@ -52,6 +52,7 @@ export const sessions = sqliteTable(
   (t) => [index('sessions_member').on(t.memberId)],
 );
 export const merchants = sqliteTable('merchants', {
+  menus: text('menus').notNull().default('[]'),
   id: text('id').primaryKey(),
   memberId: text('member_id').notNull().unique(),
   name: text('name').notNull(),
@@ -69,6 +70,7 @@ export const merchants = sqliteTable('merchants', {
 export const pickupOrders = sqliteTable(
   'pickup_orders',
   {
+    canceledBy: text('canceled_by').notNull().default(''),
     id: text('id').primaryKey(),
     buyerId: text('buyer_id').notNull(),
     sellerId: text('seller_id').notNull(),
