@@ -4,7 +4,7 @@
 
 ## 앱 다운로드 및 QR
 
-- [Android 테스트 APK 다운로드](https://github.com/Rlatldn18/teumpick/raw/refs/heads/main/public/downloads/teumpick-0.2.0.apk)
+- [Android 테스트 APK 다운로드](https://github.com/Rlatldn18/teumpick/raw/refs/heads/develop/public/downloads/teumpick-0.2.0.apk)
 - [QR 이미지](docs/teumpick-download-qr.png)
 
 ![틈픽 APK 다운로드 QR](docs/teumpick-download-qr.png)
