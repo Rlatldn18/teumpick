@@ -1,3 +1,4 @@
+import type { OrderLine } from './types';
 export const shops = [
   {
     id: 'green',
@@ -57,6 +58,7 @@ export const statuses = [
   '취소',
 ];
 export type Order = {
+  items?: OrderLine[];
   canceledBy?: string;
   id: string;
   shopId: string;

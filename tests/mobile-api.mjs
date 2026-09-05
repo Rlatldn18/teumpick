@@ -24,8 +24,20 @@ const drinkOrder={action:'create',shopId:merchant.id,menuId:'drink',unitPrice:25
 await request('orders',{token:buyer.token,body:{...drinkOrder,menuId:'missing'},status:409});
 await request('orders',{token:buyer.token,body:{...drinkOrder,menuId:'dessert',unitPrice:1000},status:409});
 await request('orders',{token:buyer.token,body:{...drinkOrder,unitPrice:1},status:409});
-await request('orders',{token:otherBuyer.token,body:drinkOrder});
-const drink=(await request('orders',{token:otherBuyer.token}))[0];assert.equal(drink.total,5000);assert.equal(drink.menuName,'아이스티');
+const basket={...drinkOrder,items:[{menuId:'main',qty:2,unitPrice:9500},{menuId:'drink',qty:2,unitPrice:2500}]};
+await request('orders',{token:otherBuyer.token,body:{...basket,items:[]},status:400});
+await request('orders',{token:otherBuyer.token,body:{...basket,items:[basket.items[0],basket.items[0]]},status:400});
+await request('orders',{token:otherBuyer.token,body:{...basket,items:[basket.items[0],{menuId:'dessert',qty:1,unitPrice:1000}]},status:409});
+await request('orders',{token:otherBuyer.token,body:{...basket,items:[basket.items[0],{menuId:'drink',qty:2,unitPrice:1}]},status:409});
+assert.equal((await request('orders',{token:otherBuyer.token})).length,0);
+await Promise.all([request('orders',{token:otherBuyer.token,body:basket}),request('orders',{token:otherBuyer.token,body:basket})]);
+assert.equal((await request('orders',{token:otherBuyer.token})).length,1);passed++;
+
+const drink=(await request('orders',{token:otherBuyer.token}))[0];assert.equal(drink.total,24000);assert.equal(drink.qty,4);assert.equal(drink.items.length,2);assert.equal(drink.items[1].name,'아이스티');
+assert.deepEqual((await request('orders',{token:seller.token}))[0].items,drink.items);
+await request('merchant',{token:seller.token,body:{...details,menus:[{...menus[0],name:'이름 변경'},menus[2]]}});
+assert.deepEqual((await request('orders',{token:otherBuyer.token}))[0].items,drink.items);
+await request('merchant',{token:seller.token,body:{...details,menus}});passed++;
 await request('orders',{token:otherSeller.token,body:{action:'cancel',id:drink.id},status:404});
 await request('orders',{token:seller.token,body:{action:'next',id:drink.id}});
 await request('orders',{token:otherBuyer.token,body:{action:'cancel',id:drink.id},status:409});

@@ -1,0 +1,1 @@
+ALTER TABLE `pickup_orders` ADD `items` text DEFAULT '[]' NOT NULL;

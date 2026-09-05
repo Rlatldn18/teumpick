@@ -29,3 +29,17 @@ export type MenuItem = {
   price: number;
   available: boolean;
 };
+export type OrderLine = {
+  menuId: string;
+  name: string;
+  qty: number;
+  unitPrice: number;
+};
+export type Cart = {
+  note?: string;
+  shopId: string;
+  shopName: string;
+  station: string;
+  items: OrderLine[];
+  requestId: string;
+};

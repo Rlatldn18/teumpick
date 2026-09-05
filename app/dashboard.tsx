@@ -23,11 +23,13 @@ import {
 } from 'lucide-react';
 import { shops as sampleShops, statuses, won, type Order } from './data';
 import { api } from './api-client';
-import type { Member, Shop } from './types';
+import type { Member, Shop, Cart } from './types';
 import AccountPanel, { MerchantPanel } from './account-panel';
 import { App as NativeApp } from '@capacitor/app';
 import { native } from './api-client';
 import Modal from './modal';
+import CartPanel from './cart-panel';
+import { cartKey, cartTotals, addCartItem } from './cart';
 import { orderEvents, type OrderEvent } from './order-events';
 import { koreaDate, salesRange, type SalesPeriod } from './sales-period';
 const photo = (id: string) =>
@@ -62,6 +64,9 @@ export default function Dashboard({
     [code, setCode] = useState(''),
     [collect, setCollect] = useState<Order | null>(null),
     [sellerShop] = useState('all');
+  const [carts, setCarts] = useState<Record<string, Cart>>({});
+  const [checkout, setCheckout] = useState<string | null>(null);
+  const currentCart = checkout ? carts[checkout] : undefined;
   const [visiting, setVisiting] = useState<Shop | null>(null);
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
   const [events, setEvents] = useState<OrderEvent[]>([]);
@@ -85,6 +90,7 @@ export default function Dashboard({
   >([]);
   const loadCatalog = useCallback(async () => {
     if (demo) return;
+    setCatalogLoading(true);
     try {
       setShops(await api<Shop[]>('catalog'));
     } catch (e) {
@@ -108,6 +114,7 @@ export default function Dashboard({
     if (!native()) return;
     const sub = NativeApp.addListener('backButton', () => {
       if (selected) setSelected(null);
+      else if (checkout) setCheckout(null);
       else if (collect) setCollect(null);
       else if (cancelOrder) setCancelOrder(null);
       else if (visiting) setVisiting(null);
@@ -117,7 +124,7 @@ export default function Dashboard({
     return () => {
       void sub.then((s) => s.remove());
     };
-  }, [tab, selected, collect, cancelOrder, visiting]);
+  }, [tab, selected, collect, cancelOrder, visiting, checkout]);
   const mutation = useRef(false);
   const refresh = useCallback(async () => {
     if (demo) return;
@@ -128,7 +135,6 @@ export default function Dashboard({
       setOrders(next);
       const fresh = orderEvents(next, role, seen.current);
       setEvents(fresh);
-      setError('');
     } catch (e) {
       setError((e as Error).message);
     }
@@ -211,6 +217,7 @@ export default function Dashboard({
     if (mutation.current) return;
     if (demo) {
       setSelected(null);
+      setCheckout(null);
       setNotice('주문하려면 구매자 회원가입이 필요해요.');
       setTab('account');
       return;
@@ -219,76 +226,23 @@ export default function Dashboard({
     setBusy(true);
     setError('');
     try {
-      if (demo) {
-        if (payload.action === 'create') {
-          const shop = shops.find((s) => s.id === payload.shopId)!;
-          const locker = Array.from({ length: 12 }, (_, i) => i + 1).find(
-            (n) =>
-              !orders.some(
-                (o) => o.station === station && o.locker === n && o.status < 4,
-              ),
-          );
-          if (!locker)
-            throw new Error(
-              '보관함이 모두 사용 중이에요. 다른 역을 선택해 주세요.',
-            );
-          const order: Order = {
-            id: crypto.randomUUID(),
-            shopId: shop.id,
-            station,
-            qty,
-            total: shop.price * qty,
-            status: 0,
-            locker,
-            created: Date.now(),
-            eta: Date.now() + shop.minutes * 60000,
-            note,
-            code: String(Math.floor(100000 + Math.random() * 900000)),
-            ready: null,
-          };
-          setOrders((prev) => [order, ...prev]);
-        } else {
-          const o = orders.find((o) => o.id === payload.id);
-          if (!o) throw new Error('주문을 찾을 수 없습니다.');
-          if (
-            payload.action === 'collect' &&
-            (o.status !== 3 || payload.code !== o.code)
-          )
-            throw new Error('수령 코드 6자리를 확인해 주세요.');
-          setOrders((prev) =>
-            prev.map((item) =>
-              item.id !== o.id
-                ? item
-                : payload.action === 'delay'
-                  ? { ...item, eta: item.eta + 300000 }
-                  : {
-                      ...item,
-                      status:
-                        payload.action === 'cancel'
-                          ? 5
-                          : payload.action === 'collect'
-                            ? 4
-                            : item.status + 1,
-                      ready:
-                        payload.action === 'next' && item.status === 2
-                          ? Date.now()
-                          : item.ready,
-                    },
-            ),
-          );
-        }
-      } else {
-        await api('orders', {
-          ...payload,
-          ...(payload.action === 'create'
-            ? { requestId: requestId.current }
-            : {}),
-        });
-        if (payload.action === 'create')
-          requestId.current = crypto.randomUUID();
-        await refresh();
-      }
+      await api('orders', {
+        ...payload,
+        ...(payload.action === 'create'
+          ? { requestId: payload.requestId ?? requestId.current }
+          : {}),
+      });
+      if (payload.action === 'create') requestId.current = crypto.randomUUID();
+      await refresh();
       if (payload.action === 'create') {
+        const key = cartKey(String(payload.station), String(payload.shopId));
+        setCarts((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        setCheckout(null);
+        setNote('');
         setSelected(null);
         setVisiting(null);
         setTab('orders');
@@ -305,9 +259,42 @@ export default function Dashboard({
       }
     } catch (e) {
       setError((e as Error).message);
+      void loadCatalog();
     } finally {
       mutation.current = false;
       setBusy(false);
+    }
+  }
+  function openCart(key: string) {
+    setCheckout(key);
+    setSelected(null);
+    setError('');
+    setNote(carts[key]?.note ?? '');
+    void loadCatalog();
+  }
+  function addSelected() {
+    if (!selected) return;
+    const key = cartKey(station, selected.id);
+    const cart = carts[key] ?? {
+      shopId: selected.id,
+      shopName: selected.name,
+      station,
+      items: [],
+      requestId: crypto.randomUUID(),
+    };
+    try {
+      const next = addCartItem(cart, {
+        menuId: selected.menuId ?? 'legacy',
+        name: selected.menu,
+        qty,
+        unitPrice: selected.price,
+      });
+      setCarts((prev) => ({ ...prev, [key]: next }));
+      setSelected(null);
+      setError('');
+      setNotice('장바구니에 담았어요. 다른 메뉴도 담아 보세요.');
+    } catch (e) {
+      setError((e as Error).message);
     }
   }
   const active = orders.filter((o) => o.status < 4),
@@ -480,6 +467,33 @@ export default function Dashboard({
               </button>
             </div>
           )}
+          {role === 'buyer' &&
+            tab === 'shops' &&
+            !visiting &&
+            Object.values(carts).some((c) => c.items.length) && (
+              <section className="saved-carts">
+                <h2>담아 둔 장바구니</h2>
+                {Object.entries(carts)
+                  .filter(([, c]) => c.items.length)
+                  .map(([key, c]) => (
+                    <button
+                      className="secondary full"
+                      key={key}
+                      onClick={() => {
+                        setStation(c.station);
+                        setVisiting(
+                          shops.find((s) => s.id === c.shopId) ?? null,
+                        );
+                        openCart(key);
+                      }}
+                    >
+                      <ShoppingBag size={18} />
+                      {c.shopName} · {c.station}역 · {cartTotals(c.items).qty}개{' '}
+                      <strong>{won(cartTotals(c.items).total)}</strong>
+                    </button>
+                  ))}
+              </section>
+            )}
           {role === 'buyer' && tab === 'shops' && !visiting && (
             <>
               <section className="welcome">
@@ -674,13 +688,37 @@ export default function Dashboard({
                           <p>{menu.description}</p>
                           <strong>{won(menu.price)}</strong>
                         </div>
-                        <span>{menu.available ? '메뉴 선택 →' : '품절'}</span>
+                        <span>{menu.available ? '메뉴 담기 +' : '품절'}</span>
                       </button>
                     ))}
                 </section>
               ))}
             </section>
           )}
+          {role === 'buyer' &&
+            tab === 'shops' &&
+            visiting &&
+            (carts[cartKey(station, visiting.id)]?.items.length ?? 0) > 0 && (
+              <div className="cart-dock">
+                <button
+                  className="primary full"
+                  onClick={() => openCart(cartKey(station, visiting.id))}
+                >
+                  <ShoppingBag size={20} />
+                  <span>
+                    장바구니{' '}
+                    {cartTotals(carts[cartKey(station, visiting.id)].items).qty}
+                    개
+                  </span>
+                  <strong>
+                    {won(
+                      cartTotals(carts[cartKey(station, visiting.id)].items)
+                        .total,
+                    )}
+                  </strong>
+                </button>
+              </div>
+            )}
           {role === 'seller' && tab === 'shops' && (
             <>
               <div className="section-heading">
@@ -848,7 +886,7 @@ export default function Dashboard({
                         <div>
                           <p className="muted">{s.name}</p>
                           <h3>
-                            {s.menu} <span>× {o.qty}</span>
+                            {s.menu} <span>· 총 {o.qty}개</span>
                           </h3>
                           <strong>{won(o.total)}</strong>
                         </div>
@@ -860,6 +898,18 @@ export default function Dashboard({
                           </strong>
                         </div>
                       </div>
+                      {!!o.items?.length && (
+                        <ul className="order-line-items">
+                          {o.items.map((item) => (
+                            <li key={item.menuId}>
+                              <span>
+                                {item.name} × {item.qty}
+                              </span>
+                              <strong>{won(item.unitPrice * item.qty)}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {o.note && (
                         <div className="order-note">요청 사항: {o.note}</div>
                       )}
@@ -1096,28 +1146,77 @@ export default function Dashboard({
           </section>
         </Modal>
       )}
-      {events.length > 0 && !selected && !collect && !cancelOrder && (
-        <Modal label="event-title" onClose={dismissEvent}>
-          <section className="modal compact">
-            <PackageCheck size={32} className="green" />
-            <h2 id="event-title">{events[0].title}</h2>
-            <p>{events[0].message}</p>
-            <button
-              className="primary full"
-              onClick={() => {
-                dismissEvent();
-                setTab('orders');
-                setFilter('전체');
-                setVisiting(null);
-              }}
-            >
-              주문 확인하기
-            </button>
-            <button className="secondary full" onClick={dismissEvent}>
-              확인
-            </button>
-          </section>
-        </Modal>
+      {events.length > 0 &&
+        !selected &&
+        !collect &&
+        !cancelOrder &&
+        !checkout && (
+          <Modal label="event-title" onClose={dismissEvent}>
+            <section className="modal compact">
+              <PackageCheck size={32} className="green" />
+              <h2 id="event-title">{events[0].title}</h2>
+              <p>{events[0].message}</p>
+              <button
+                className="primary full"
+                onClick={() => {
+                  dismissEvent();
+                  setTab('orders');
+                  setFilter('전체');
+                  setVisiting(null);
+                }}
+              >
+                주문 확인하기
+              </button>
+              <button className="secondary full" onClick={dismissEvent}>
+                확인
+              </button>
+            </section>
+          </Modal>
+        )}
+      {currentCart && checkout && (
+        <CartPanel
+          cart={currentCart}
+          shop={shops.find((s) => s.id === currentCart.shopId)}
+          busy={busy || catalogLoading}
+          error={error}
+          note={note}
+          setNote={(value) => {
+            setNote(value);
+            setCarts((prev) => ({
+              ...prev,
+              [checkout]: {
+                ...currentCart,
+                note: value,
+                requestId: crypto.randomUUID(),
+              },
+            }));
+          }}
+          update={(cart) => {
+            setCarts((prev) => ({ ...prev, [checkout]: cart }));
+            setError('');
+          }}
+          close={() => {
+            setCheckout(null);
+            setTab('shops');
+            setStation(currentCart.station);
+            setVisiting(shops.find((s) => s.id === currentCart.shopId) ?? null);
+          }}
+          reload={() => void loadCatalog()}
+          submit={() =>
+            void act({
+              action: 'create',
+              shopId: currentCart.shopId,
+              station: currentCart.station,
+              items: currentCart.items.map(({ menuId, qty, unitPrice }) => ({
+                menuId,
+                qty,
+                unitPrice,
+              })),
+              requestId: currentCart.requestId,
+              note,
+            })
+          }
+        />
       )}
       {selected && (
         <Modal
@@ -1173,20 +1272,9 @@ export default function Dashboard({
                   </button>
                 </div>
               </div>
-              <label className="note-label">
-                가게에 요청할 내용
-                <input
-                  maxLength={200}
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="예: 소스는 따로 담아 주세요"
-                />
-              </label>
-              <div className="checkout-note">
-                <MapPin size={17} />
-                <span>{station}역 A존 · 주문 시 보관함 자동 배정</span>
-              </div>
-              <p className="muted">시범 주문으로 실제 결제되지 않습니다.</p>
+              <p className="muted">
+                장바구니에 담은 뒤 다른 메뉴도 함께 주문할 수 있어요.
+              </p>
               {error && (
                 <p className="error" role="alert">
                   {error}
@@ -1195,21 +1283,9 @@ export default function Dashboard({
               <button
                 className="primary full"
                 disabled={busy}
-                onClick={() =>
-                  act({
-                    action: 'create',
-                    shopId: selected.id,
-                    menuId: selected.menuId,
-                    unitPrice: selected.price,
-                    station,
-                    qty,
-                    note,
-                  })
-                }
+                onClick={addSelected}
               >
-                {busy
-                  ? '주문 처리 중…'
-                  : `${won(selected.price * qty)} · 시범 주문하기`}
+                {`${won(selected.price * qty)} · 장바구니 담기`}
                 <ArrowRight size={17} />
               </button>
             </div>

@@ -71,6 +71,7 @@ export const pickupOrders = sqliteTable(
   'pickup_orders',
   {
     canceledBy: text('canceled_by').notNull().default(''),
+    items: text('items').notNull().default('[]'),
     id: text('id').primaryKey(),
     buyerId: text('buyer_id').notNull(),
     sellerId: text('seller_id').notNull(),

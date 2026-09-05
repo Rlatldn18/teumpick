@@ -6,7 +6,7 @@ import {
   verifyPassword,
   passwordValid,
 } from './password';
-import type { Member, MenuItem } from '../app/types';
+import type { Member, MenuItem, OrderLine } from '../app/types';
 const ORIGIN = 'https://platform-pick-sindorim.szmt-36.chatgpt.site';
 const allowed = new Set([ORIGIN, 'https://localhost', 'capacitor://localhost']);
 const COOKIE = 'teumpick_session';
@@ -81,7 +81,7 @@ async function loginSession(member: Member, req: Request) {
 const shopSelect =
   'SELECT id,name,category,description AS desc,minutes,price,menu,image,station,open,menus FROM merchants';
 const orderSelect =
-  'SELECT id,buyer_id AS buyerId,seller_id AS sellerId,shop_id AS shopId,shop_name AS shopName,menu_name AS menuName,image,station,qty,total,status,locker,created,eta,note,code,ready,canceled_by AS canceledBy FROM pickup_orders';
+  'SELECT id,buyer_id AS buyerId,seller_id AS sellerId,shop_id AS shopId,shop_name AS shopName,menu_name AS menuName,image,station,qty,total,status,locker,created,eta,note,code,ready,canceled_by AS canceledBy,items FROM pickup_orders';
 const photoByCategory: Record<string, string> = {
   한식: 'photo-1547592180-85f173990554',
   샐러드: 'photo-1512621776951-a57141f2eefd',
@@ -493,6 +493,7 @@ export async function handle(req: Request) {
       result = rows.results.map((r) => ({
         ...r,
         code: m.role === 'buyer' && r.status === 3 ? r.code : '',
+        items: JSON.parse(typeof r.items === 'string' ? r.items : '[]'),
         buyerId: undefined,
         sellerId: undefined,
       }));
@@ -502,9 +503,6 @@ export async function handle(req: Request) {
       if (b.action === 'create') {
         if (m.role !== 'buyer') fail(403, '구매자 계정으로 주문해 주세요.');
         if (
-          !Number.isInteger(b.qty) ||
-          Number(b.qty) < 1 ||
-          Number(b.qty) > 10 ||
           typeof b.note !== 'string' ||
           b.note.length > 200 ||
           typeof b.requestId !== 'string' ||
@@ -529,27 +527,71 @@ export async function handle(req: Request) {
           if (!shop || shop.station !== b.station)
             fail(409, '현재 주문할 수 없는 매장입니다.');
           const menus = readMenus(shop);
-          const chosen =
-            b.menuId === undefined
-              ? menus.find((x) => x.available)
-              : menus.find((x) => x.id === b.menuId && x.available);
-          if (!chosen)
-            fail(
-              409,
-              '판매 중인 메뉴가 아니에요. 메뉴 목록을 다시 확인해 주세요.',
-            );
-          if (b.unitPrice !== chosen.price)
-            fail(
-              409,
-              '메뉴 가격이 변경됐어요. 가게 목록을 새로 확인해 주세요.',
-            );
+          const requested =
+            b.items === undefined
+              ? [
+                  {
+                    menuId: b.menuId ?? menus.find((x) => x.available)?.id,
+                    qty: b.qty,
+                    unitPrice: b.unitPrice,
+                  },
+                ]
+              : b.items;
+          if (
+            !Array.isArray(requested) ||
+            requested.length < 1 ||
+            requested.length > 50
+          )
+            fail(400, '장바구니에 메뉴를 1개 이상 담아 주세요.');
+          const seenIds = new Set<string>();
+          const items: OrderLine[] = requested.map((item) => {
+            if (
+              !item ||
+              typeof item !== 'object' ||
+              typeof item.menuId !== 'string' ||
+              !Number.isInteger(item.qty) ||
+              item.qty < 1 ||
+              item.qty > 10 ||
+              seenIds.has(item.menuId)
+            )
+              fail(400, '메뉴 수량은 1~10개이며 중복 메뉴는 합쳐 주세요.');
+            seenIds.add(item.menuId);
+            const menu = menus.find((x) => x.id === item.menuId && x.available);
+            if (!menu)
+              fail(
+                409,
+                '품절되거나 삭제된 메뉴가 있어요. 장바구니를 확인해 주세요.',
+              );
+            if (item.unitPrice !== menu.price)
+              fail(
+                409,
+                '가격이 변경된 메뉴가 있어요. 장바구니에서 최신 메뉴 정보를 확인해 주세요.',
+              );
+            return {
+              menuId: menu.id,
+              name: menu.name,
+              qty: item.qty,
+              unitPrice: menu.price,
+            };
+          });
+          const quantity = items.reduce((sum, item) => sum + item.qty, 0);
+          if (quantity > 50)
+            fail(400, '한 주문에는 총 50개까지 담을 수 있어요.');
+          const total = items.reduce(
+            (sum, item) => sum + item.qty * item.unitPrice,
+            0,
+          );
+          const menuName =
+            items.length === 1
+              ? items[0].name
+              : `${items[0].name} 외 ${items.length - 1}종`;
           let done = false;
           for (let n = 1; n <= 12; n++) {
             try {
               const created = Date.now();
               const r = await db()
                 .prepare(
-                  'INSERT INTO pickup_orders (id,buyer_id,seller_id,shop_id,shop_name,menu_name,image,station,qty,total,status,locker,created,eta,note,code,request_id) SELECT ?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=?) AND EXISTS(SELECT 1 FROM merchants WHERE id=? AND open=1 AND price=? AND menus=? AND minutes=? AND station=? AND member_id IN (SELECT id FROM members))',
+                  'INSERT INTO pickup_orders (id,buyer_id,seller_id,shop_id,shop_name,menu_name,image,station,qty,total,status,locker,created,eta,note,code,request_id,items) SELECT ?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM members WHERE id=?) AND EXISTS(SELECT 1 FROM merchants WHERE id=? AND open=1 AND price=? AND menus=? AND minutes=? AND station=? AND member_id IN (SELECT id FROM members))',
                 )
                 .bind(
                   crypto.randomUUID(),
@@ -557,11 +599,11 @@ export async function handle(req: Request) {
                   shop.member_id,
                   shop.id,
                   shop.name,
-                  chosen.name,
+                  menuName,
                   shop.image,
                   shop.station,
-                  b.qty,
-                  chosen.price * Number(b.qty),
+                  quantity,
+                  total,
                   n,
                   created,
                   created + Number(shop.minutes) * 60000,
@@ -571,6 +613,7 @@ export async function handle(req: Request) {
                       (crypto.getRandomValues(new Uint32Array(1))[0] % 900000),
                   ),
                   b.requestId,
+                  JSON.stringify(items),
                   m.id,
                   shop.id,
                   shop.price,
