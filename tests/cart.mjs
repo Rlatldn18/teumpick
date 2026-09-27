@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {addCartItem, cartKey, cartTotals} from '../app/cart.ts';
+const base = {shopId:'a', shopName:'가게', station:'신도림', requestId:'original', items:[]};
+const main = {menuId:'food', name:'덮밥', qty:2, unitPrice:9500};
+const one = addCartItem(base, main);
+const two = addCartItem(one, {menuId:'drink', name:'음료', qty:1, unitPrice:2500});
+const three = addCartItem(two, {...main, qty:1});
+assert.equal(base.items.length, 0);
+assert.equal(three.items.length, 2);
+assert.equal(three.items[0].qty, 3);
+assert.deepEqual(cartTotals(three.items), {qty:4, total:31000});
+assert.notEqual(two.requestId,three.requestId);
+assert.throws(() => addCartItem(three, {...main,qty:8}));
+assert.throws(() => addCartItem(three, {...main,qty:1,unitPrice:10000}));
+assert.throws(() => addCartItem({...base,items:Array.from({length:5},(_,i)=>({...main,menuId:String(i),qty:10}))}, {...main,qty:1}));
+assert.notEqual(cartKey('신도림','a'),cartKey('영등포','a'));
+assert.notEqual(cartKey('신도림','a'),cartKey('신도림','b'));
+console.log('PASS: cart merge, totals, quantity bounds, immutable edits, request identity, store/station isolation.');

@@ -1,0 +1,84 @@
+# 틈픽 0.4.2 — Android 앱
+
+틈픽 앱은 [현재 서버](https://teumpick-fresh-20260927.k40856874.chatgpt.site)와 새 D1 데이터베이스를 사용합니다. 회원·매장·주문·보관함 데이터는 빈 상태에서 시작했으며, 앱은 이전 서버에 연결하지 않습니다. Capacitor가 React 화면을 APK 내부에 패키징하며 시작 화면을 원격 웹 URL로 여는 방식은 아닙니다.
+
+## 0.4 장바구니
+- 가게·역별 임시 장바구니, 동일 메뉴 수량 합산, 수량 변경/삭제, 요청 사항과 총액 확인.
+- 음식·음료를 하나의 주문과 보관함으로 묶고 구매자·판매자 양쪽에 메뉴별 수량/금액 표시.
+- 서버에서 모든 메뉴의 판매 상태·가격을 확인한 뒤 한 번에 저장. 부분 주문 없음.
+- 주문 당시 메뉴/가격/수량을 보존. 요청 재시도 중 중복 주문 방지.
+- 장바구니는 앱 실행 중 유지되는 주문 초안이며 로그아웃·앱 재시작 시 초기화됩니다.
+- tests/cart.mjs: 수량 합산, 합계, 한도, 매장/역 분리. API 22개 통합 그룹에 묶음 주문·품절·가격 변경·동시 재시도·주문 당시 항목 보존 포함.
+
+## 태블릿 화면
+
+- 기존 Android 앱은 모든 화면을 최대 540px 너비로 표시해 태블릿 양옆에 큰 여백이 생겼습니다.
+- Android 앱의 화면 너비가 700 CSS px 이상이면 앱 배경과 하단 메뉴가 화면 전체를 채우고, 본문은 읽기 편한 최대 너비로 가운데 배치됩니다. 가게 목록은 두 열로 표시됩니다. 휴대폰과 웹 화면의 레이아웃은 유지합니다.
+- 태블릿 화면과 주문 진행선 수정은 아래 0.4.2 APK에 반영했습니다. 설치한 기기에서 확인해야 합니다.
+
+## 0.3 변경 사항
+- 가게 선택 → 분류별 메뉴 화면 → 선택한 메뉴 주문 확인.
+- 매장당 최대 50개 메뉴, 메인 메뉴/사이드/음료/디저트/기타 분류와 품절 관리.
+- 구매자 취소 확인 팝업, 판매자는 입고 전 주문 취소 가능. 입고·판매자 취소·신규 주문 알림 팝업.
+- 알림은 앱 실행 중 5초 간격으로 확인하며 확인한 알림은 같은 기기에서 반복 표시하지 않습니다. 백그라운드 푸시는 미연동.
+- 한국 시간 기준 일·주(월~일)·월·년 주문 금액 및 건수, 기준 날짜 변경. 취소 제외.
+- tests/order-features.mjs: 기간 경계·윤년·계정별 팝업 조건 검증.
+- 기존 매장 대표 메뉴는 메뉴 목록으로 자동 표시하며 기존 주문은 그대로 보존합니다.
+
+## 앱 다운로드
+
+![틈픽 다운로드 QR](docs/teumpick-download-qr.png)
+
+[Android 0.4.2 APK 바로 다운로드](https://raw.githubusercontent.com/Rlatldn18/teumpick/develop/public/downloads/teumpick-0.4.2.apk)
+
+위 QR은 같은 0.4.2 APK의 직접 다운로드 주소를 가리킵니다. 기존 0.4.1 앱은 업데이트 설치할 수 있습니다. 0.4.0 또는 `틈픽 새 시작` 앱이 설치되어 있다면 기존 앱을 삭제하고 이 APK를 설치하세요. 새 서버에는 기존 계정이 없으므로 다시 회원가입해야 합니다. 기존 서버의 데이터는 이 앱에서 사용하지 않습니다.
+
+## 구현
+- 구매자·판매자별 회원가입, 이메일/비밀번호 로그인. ChatGPT 인증 제거.
+- Scrypt(N=32768,r=8,p=3), 임의 salt, 세션 토큰 해시 저장, 로그인 제한, 7일 만료.
+- Android Keystore AES-GCM 암호화 세션 보관. 브라우저 미리보기는 HttpOnly cookie.
+- 최초 발급 복구 코드로 비밀번호 재설정, 모든 기존 세션 폐기. 로그아웃, 비밀번호 재확인 회원 탈퇴.
+- 판매자별 실제 매장/분류별 메뉴/가격/준비 시간/접수 설정, 공개 가게 목록.
+- 구매자와 해당 판매자 사이 주문 공유. 서버에서 계정 역할과 소유권 검사.
+- 가격 변조/가격 변경 차단, 요청 ID 중복 주문 방지, 역 전체 12칸 보관함 유일성.
+- 주문 접수/준비/이동/입고/수령, 시간 연장, 접수 단계 취소.
+- 구매자에게만 입고 후 수령 코드 공개. 잘못된 코드 반복 제한.
+- 하단 탭, 시스템 안전 영역, Android 뒤로가기, 앱 아이콘과 시작 화면.
+- 인터넷 권한만 사용. 평문 HTTP와 앱 백업 비활성화.
+- 앱 내 개인정보 안내 및 /privacy, 앱 외부 계정 삭제 진입 /account/delete.
+
+## 실행/빌드
+Node >=22.13, JDK 21, Android SDK 36.
+
+- npm install
+- npm run dev — 기존 UI/서버 개발 미리보기
+- npm run build — 서버 배포 출력
+- npm run build:mobile — 앱에 내장할 UI
+- npx cap sync android — 안드로이드 자산/플러그인 동기화
+- android/gradlew.bat -p android assembleDebug bundleRelease
+- scripts/build-android.ps1 — 프로젝트 안에 도구가 설치된 환경용
+
+새 APK를 직접 빌드하려면 `npm run build:mobile` → `npx cap sync android` → `android/gradlew.bat -p android assembleDebug` 순서로 실행한 뒤 `android/app/build/outputs/apk/debug/app-debug.apk`를 태블릿에 설치합니다.
+
+APK는 테스트용 debug 서명입니다. AAB는 업로드 키 서명 전이며 스토어에 업로드하지 않았습니다. 실제 출시 시 조직의 패키지 ID와 업로드 키를 확정하고 환경 변수를 통한 signingConfig를 추가해야 합니다. 비밀 키는 저장소에 넣지 않습니다.
+
+## 검증
+- TypeScript, 작성한 app/server/db/lib lint, 서버 빌드 및 모바일 번들 빌드
+- npm audit --omit=dev: 운영 의존성 알려진 취약점 0개 (2026-09-05). 빌드 도구를 포함한 전체 트리에는 별도 개발 의존성 진단이 남음.
+- tests/mobile-api.mjs: 로컬 실제 Worker/D1에서 22개 통합 그룹. 신규 계정4개를 생성하고 테스트 후 삭제. API 인증/역할/소유권, 공유 주문, 금액, 중복 요청, 보관함 12칸 만석, 준비시간 변경, 수령코드, 취소, 비밀번호 복구, 삭제, 외부 origin 차단.
+- 재실행 시 로컬 가입 제한(시간당8회)에 걸릴 수 있음. 운영 데이터의 제한을 낮추지 말 것.
+- Gradle assembleDebug / bundleRelease 및 Android 릴리스 필수 lint.
+- 사용자 제공 태블릿 사진에서 기존 540px 폭 제한을 확인했습니다. 수정 후 새 APK의 실기기/에뮬레이터 설치·터치·키보드 테스트는 아직 수행하지 않았습니다.
+- WebMCP 메뉴 열기 도구는 유지했으나 지원 컨텍스트가 없어 호출 검증하지 않음.
+- 생성된 미사용 shadcn 컴포넌트에는 기존 전체 lint 진단이 남아 있음.
+
+## 현재 외부 연동 범위
+정식 상용 출시 완료 상태로 표현하면 안 됩니다. 주문은 무료 시험 주문이고 결제/환불/앱이 꺼진 상태의 푸시 알림/이메일 소유권 검증/실제 보관함 센서·개방은 연결되지 않았습니다. 매장 주소·판매자 신원은 자동 검증되지 않으며 메뉴 사진은 명시된 예시 이미지입니다. 메뉴는 매장당 최대 50개이며 한 주문에 여러 메뉴를 담아 합산하며 메뉴당 10개, 총 50개까지 가능합니다. 개인정보 안내는 실제 저장 동작을 설명하는 시험 운영 초안이며 정식 운영자의 연락처·보관 기간·위탁/국외 이전 상세 등 확정이 필요합니다. 진행 중인 주문이 있는 계정은 주문 처리 후 탈퇴 가능합니다. 기존 ChatGPT 기반 pilot 데이터는 변경하지 않고 신규 계정 데이터와 분리했습니다.
+
+## 참고한 흐름/요건
+- Too Good To Go: 주변 가게 탐색 → 예약 → 지정 시간 수령 https://www.toogoodtogo.com/en-us/how-does-the-app-work
+- Google Play target API: https://developer.android.com/google/play/requirements/target-sdk (2026-09-05 확인, target API 36)
+- 계정 삭제: https://support.google.com/googleplay/android-developer/answer/13327111
+- Capacitor 8: https://capacitorjs.com/docs/updating/8-0
+- 비밀번호 보관: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+
