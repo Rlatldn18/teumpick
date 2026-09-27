@@ -1,6 +1,6 @@
 # 틈픽 새 시작 0.4.1 — 독립 서버 복사본
 
-기존 틈픽 디자인, 메뉴 카드, 주문 진행 화면을 유지한 복사본입니다. 서버는 [새 Sites 프로젝트](https://teumpick-fresh-20260927.lofty-camel-0763.chatgpt.site)에 연결하고, 회원·매장·주문·보관함 데이터는 새 D1 데이터베이스에서 처음부터 시작합니다. 원래 틈픽 서버와 기존 데이터는 변경하지 않습니다. Capacitor가 React 화면을 APK 내부에 패키징하며 시작 화면을 원격 웹 URL로 여는 방식은 아닙니다.
+기존 틈픽 디자인, 메뉴 카드, 주문 진행 화면을 유지한 복사본입니다. 서버는 [새 Sites 프로젝트](https://teumpick-fresh-20260927.k40856874.chatgpt.site)에 연결하고, 회원·매장·주문·보관함 데이터는 새 D1 데이터베이스에서 처음부터 시작합니다. 원래 틈픽 서버와 기존 데이터는 변경하지 않습니다. Capacitor가 React 화면을 APK 내부에 패키징하며 시작 화면을 원격 웹 URL로 여는 방식은 아닙니다.
 
 ## 0.4 장바구니
 - 가게·역별 임시 장바구니, 동일 메뉴 수량 합산, 수량 변경/삭제, 요청 사항과 총액 확인.
@@ -29,7 +29,7 @@
 
 ![틈픽 다운로드 QR](docs/teumpick-download-qr.png)
 
-[Android 새 시작 0.4.1 테스트 APK](https://teumpick-fresh-20260927.lofty-camel-0763.chatgpt.site/downloads/teumpick-fresh-0.4.1.apk)
+[Android 새 시작 0.4.1 테스트 APK](https://teumpick-fresh-20260927.k40856874.chatgpt.site/downloads/teumpick-fresh-0.4.1.apk)
 
 위 QR은 독립 서버에 연결되는 새 APK의 다운로드 주소를 가리킵니다. 패키지 ID가 `kr.teumpick.fresh`이므로 기존 틈픽 앱과 나란히 설치할 수 있습니다. 새 서버가 공개되기 전에는 다운로드와 회원가입이 외부 기기에서 작동하지 않습니다. 기존 앱을 삭제할 필요가 없으며 기존 서버의 회원·주문 데이터는 그대로 남습니다.
 
