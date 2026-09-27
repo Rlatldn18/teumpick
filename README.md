@@ -1,4 +1,4 @@
-# 틈픽 0.4 — Android app
+# 틈픽 0.4.1 — Android app
 
 기존 틈픽 디자인, 메뉴 카드, 주문 진행 화면을 유지하면서 설치형 Android 앱과 독립적인 회원 계정으로 확장했습니다. Capacitor가 React 화면을 APK 내부에 패키징합니다. 시작 화면을 원격 웹 URL로 여는 방식이 아니며 server.url은 설정하지 않았습니다. 서버는 기존 Sites/D1을 재사용합니다.
 
@@ -14,7 +14,7 @@
 
 - 기존 Android 앱은 모든 화면을 최대 540px 너비로 표시해 태블릿 양옆에 큰 여백이 생겼습니다.
 - Android 앱의 화면 너비가 700 CSS px 이상이면 앱 배경과 하단 메뉴가 화면 전체를 채우고, 본문은 읽기 편한 최대 너비로 가운데 배치됩니다. 가게 목록은 두 열로 표시됩니다. 휴대폰과 웹 화면의 레이아웃은 유지합니다.
-- 이 변경은 앱에 내장되는 UI 수정입니다. 이미 설치된 APK와 아래 다운로드 링크의 APK에는 반영되지 않았습니다. 새 APK를 빌드해 태블릿에 설치해야 확인할 수 있습니다.
+- 태블릿 화면과 주문 진행선 수정은 아래 0.4.1 APK에 반영했습니다. 설치한 기기에서 확인해야 합니다.
 
 ## 0.3 변경 사항
 - 가게 선택 → 분류별 메뉴 화면 → 선택한 메뉴 주문 확인.
@@ -29,9 +29,9 @@
 
 ![틈픽 다운로드 QR](docs/teumpick-download-qr.png)
 
-[Android 0.4 테스트 APK](https://platform-pick-sindorim.szmt-36.chatgpt.site/downloads/teumpick-0.4.0.apk)
+[Android 0.4.1 테스트 APK](https://raw.githubusercontent.com/Rlatldn18/teumpick/develop/public/downloads/teumpick-0.4.1.apk)
 
-기존 QR의 0.2.0 다운로드 주소도 위 테스트 APK를 제공하는 호환 주소로 유지합니다. 태블릿 화면 수정은 아직 이 다운로드 파일에 반영되지 않았습니다.
+위 QR은 0.4.1 APK의 GitHub 다운로드 주소를 가리킵니다. 기존 0.4.0 APK와 새 APK의 디버그 서명 키가 달라 덮어쓰기 설치가 불가능합니다. 기존 앱을 삭제한 후 새 APK를 설치하세요. 앱 삭제는 기기에 저장된 로그인 정보를 지우지만 서버의 회원·주문 데이터는 삭제하지 않습니다.
 
 ## 구현
 - 구매자·판매자별 회원가입, 이메일/비밀번호 로그인. ChatGPT 인증 제거.
@@ -58,7 +58,7 @@ Node >=22.13, JDK 21, Android SDK 36.
 - android/gradlew.bat -p android assembleDebug bundleRelease
 - scripts/build-android.ps1 — 프로젝트 안에 도구가 설치된 환경용
 
-태블릿 화면 수정본을 설치하려면 `npm run build:mobile` → `npx cap sync android` → `android/gradlew.bat -p android assembleDebug` 순서로 실행한 뒤 `android/app/build/outputs/apk/debug/app-debug.apk`를 태블릿에 설치합니다.
+새 APK를 직접 빌드하려면 `npm run build:mobile` → `npx cap sync android` → `android/gradlew.bat -p android assembleDebug` 순서로 실행한 뒤 `android/app/build/outputs/apk/debug/app-debug.apk`를 태블릿에 설치합니다.
 
 APK는 테스트용 debug 서명입니다. AAB는 업로드 키 서명 전이며 스토어에 업로드하지 않았습니다. 실제 출시 시 조직의 패키지 ID와 업로드 키를 확정하고 환경 변수를 통한 signingConfig를 추가해야 합니다. 비밀 키는 저장소에 넣지 않습니다.
 
