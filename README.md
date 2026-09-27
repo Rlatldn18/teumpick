@@ -29,7 +29,7 @@
 
 ![틈픽 다운로드 QR](docs/teumpick-download-qr.png)
 
-[Android 0.4.2 APK 바로 다운로드](https://raw.githubusercontent.com/Rlatldn18/teumpick/develop/public/downloads/teumpick-0.4.2.apk)
+[Android 0.4.2 APK 바로 다운로드](https://raw.githubusercontent.com/Rlatldn18/teumpick/main/public/downloads/teumpick-0.4.2.apk)
 
 위 QR은 같은 0.4.2 APK의 직접 다운로드 주소를 가리킵니다. 기존 0.4.1 앱은 업데이트 설치할 수 있습니다. 0.4.0 또는 `틈픽 새 시작` 앱이 설치되어 있다면 기존 앱을 삭제하고 이 APK를 설치하세요. 새 서버에는 기존 계정이 없으므로 다시 회원가입해야 합니다. 기존 서버의 데이터는 이 앱에서 사용하지 않습니다.
 
