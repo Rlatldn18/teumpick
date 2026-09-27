@@ -2542,6 +2542,43 @@ button:disabled {
     padding-top: 40px;
   }
 }
+@media (min-width: 700px) {
+  .native-app .auth-app,
+  .native-app .app-shell,
+  .native-app .app-loading {
+    width: 100%;
+    max-width: none;
+    box-shadow: none;
+    border-left: 0;
+    border-right: 0;
+  }
+  .native-app .auth-header,
+  .native-app .auth-content {
+    width: min(100%, 860px);
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .native-app .auth-content {
+    padding-left: 36px;
+    padding-right: 36px;
+  }
+  .native-app .sidebar {
+    left: 0;
+    width: 100%;
+    transform: none;
+  }
+  .native-app .sidebar nav {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .native-app .workspace {
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .native-app .shop-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .deletion-instructions {
   max-width: 540px;
   margin: auto;
