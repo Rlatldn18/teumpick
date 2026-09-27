@@ -61,7 +61,7 @@ export default function AccountPanel({
         )}
       </div>
       <p className="version-note">
-        틈픽 0.4.1 · Android
+        틈픽 0.4.2 · Android
         <br />
         결제·보관함 연동 준비 중
       </p>

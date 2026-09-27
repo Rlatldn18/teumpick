@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
-  appId: 'kr.teumpick.fresh',
-  appName: '틈픽 새 시작',
+  appId: 'kr.teumpick.app',
+  appName: '틈픽',
   webDir: 'mobile-dist',
   server: { androidScheme: 'https' },
   android: { allowMixedContent: false },
