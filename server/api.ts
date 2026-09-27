@@ -7,7 +7,7 @@ import {
   passwordValid,
 } from './password';
 import type { Member, MenuItem, OrderLine } from '../app/types';
-const ORIGIN = 'https://platform-pick-sindorim.szmt-36.chatgpt.site';
+const ORIGIN = 'https://teumpick-fresh-20260927.lofty-camel-0763.chatgpt.site';
 const allowed = new Set([ORIGIN, 'https://localhost', 'capacitor://localhost']);
 const COOKIE = 'teumpick_session';
 const DAY = 86400000;

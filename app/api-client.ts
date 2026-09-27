@@ -31,7 +31,7 @@ export class ApiError extends Error {
 }
 export async function api<T>(path: string, body?: unknown): Promise<T> {
   const base = native()
-    ? 'https://platform-pick-sindorim.szmt-36.chatgpt.site'
+    ? 'https://teumpick-fresh-20260927.lofty-camel-0763.chatgpt.site'
     : '';
   const controller = new AbortController(),
     timer = setTimeout(() => controller.abort(), 20000);

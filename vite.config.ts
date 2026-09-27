@@ -1,4 +1,4 @@
-import { sites } from '@openai/sites-vite-plugin';
+import { sites } from './build/sites-vite-plugin';
 import tailwindcss from '@tailwindcss/postcss';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
