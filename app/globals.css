@@ -1001,11 +1001,12 @@ footer {
 .progress-track > div:before {
   content: '';
   position: absolute;
+  z-index: 0;
   height: 2px;
   background: #e6ede7;
   top: 10px;
-  left: -50%;
-  right: 50%;
+  left: calc(-50% + 11px);
+  right: calc(50% + 11px);
 }
 .progress-track > div:first-child:before {
   display: none;
@@ -1013,6 +1014,7 @@ footer {
 .progress-track > div > span {
   margin: auto auto 5px;
   position: relative;
+  z-index: 1;
   display: grid;
   place-items: center;
   width: 22px;
